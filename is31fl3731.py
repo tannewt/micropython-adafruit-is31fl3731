@@ -31,19 +31,22 @@ class Matrix:
     def __init__(self, i2c, address=0x74):
         self.i2c = i2c
         self.address = address
+        self.temp = bytearray(1)
         self.reset()
         self.init()
 
     def _bank(self, bank=None):
         if bank is None:
             return self.i2c.readfrom_mem(self.address, _BANK_ADDRESS, 1)[0]
-        self.i2c.writeto_mem(self.address, _BANK_ADDRESS, bytearray([bank]))
+        self.temp[0] = bank
+        self.i2c.writeto_mem(self.address, _BANK_ADDRESS, self.temp)
 
     def _register(self, bank, register, value=None):
         self._bank(bank)
         if value is None:
             return self.i2c.readfrom_mem(self.address, register, 1)[0]
-        self.i2c.writeto_mem(self.address, register, bytearray([value]))
+        self.temp[0] = value
+        self.i2c.writeto_mem(self.address, register, self.temp)
 
     def _mode(self, mode=None):
         return self._register(_CONFIG_BANK, _MODE_REGISTER, mode)
