@@ -1,6 +1,7 @@
 import math
 import time
 
+
 _MODE_REGISTER = const(0x00)
 _FRAME_REGISTER = const(0x01)
 _AUTOPLAY1_REGISTER = const(0x02)
@@ -31,22 +32,31 @@ class Matrix:
     def __init__(self, i2c, address=0x74):
         self.i2c = i2c
         self.address = address
-        self.temp = bytearray(1)
+        self.temp1 = bytearray(1)
+        self.temp2 = bytearray(2)
         self.reset()
         self.init()
 
     def _bank(self, bank=None):
         if bank is None:
-            return self.i2c.readfrom_mem(self.address, _BANK_ADDRESS, 1)[0]
-        self.temp[0] = bank
-        self.i2c.writeto_mem(self.address, _BANK_ADDRESS, self.temp)
+            self.temp1[0] = _BANK_ADDRESS
+            self.i2c.writeto(self.address, self.temp1, stop=False)
+            self.i2c.readfrom_into(self.address, sef.temp1)
+            return self.temp1[0]
+        self.temp2[0] = _BANK_ADDRESS
+        self.temp2[1] = bank
+        self.i2c.writeto(self.address, self.temp2)
 
     def _register(self, bank, register, value=None):
         self._bank(bank)
         if value is None:
-            return self.i2c.readfrom_mem(self.address, register, 1)[0]
-        self.temp[0] = value
-        self.i2c.writeto_mem(self.address, register, self.temp)
+            self.temp1[0] = register
+            self.i2c.writeto(self.address, self.temp1, stop=False)
+            self.i2c.readfrom_into(self.address, sef.temp1)
+            return self.temp1[0]
+        self.temp2[0] = register
+        self.temp2[1] = value
+        self.i2c.writeto(self.address, self.temp2)
 
     def _mode(self, mode=None):
         return self._register(_CONFIG_BANK, _MODE_REGISTER, mode)
@@ -62,73 +72,12 @@ class Matrix:
 
     def reset(self):
         self.sleep(True)
-        time.sleep(0.00001)
+        time.sleep(.0001)
         self.sleep(False)
 
     def sleep(self, value):
         return self._register(_CONFIG_BANK, _SHUTDOWN_REGISTER, not value)
 
-    def autoplay(self, delay=0, loops=0, frames=0):
-        if delay == 0:
-            self._mode(_PICTURE_MODE)
-            return
-        delay //= 11
-        if not 0 <= loops <= 7:
-            raise ValueError("Loops out of range")
-        if not 0 <= frames <= 7:
-            raise ValueError("Frames out of range")
-        if not 1 <= delay <= 64:
-            raise ValueError("Delay out of range")
-        self._register(_CONFIG_BANK, _AUTOPLAY1_REGISTER, loops << 4 | frames)
-        self._register(_CONFIG_BANK, _AUTOPLAY2_REGISTER, delay % 64)
-        self._mode(_AUTOPLAY_MODE | self._frame)
-
-    def fade(self, fade_in=None, fade_out=None, pause=0):
-        if fade_in is None and fade_out is None:
-            self._register(_CONFIG_BANK, _BREATH2_REGISTER, 0)
-        elif fade_in is None:
-            fade_in = fade_out
-        elif fade_out is None:
-            fade_out = fade_in
-        fade_in = int(math.log(fade_in / 26, 2))
-        fade_out = int(math.log(fade_out / 26, 2))
-        pause = int(math.log(pause / 26, 2))
-        if not 0 <= fade_in <= 7:
-            raise ValueError("Fade in out of range")
-        if not 0 <= fade_out <= 7:
-            raise ValueError("Fade out out of range")
-        if not 0 <= pause <= 7:
-            raise ValueError("Pause out of range")
-        self._register(_CONFIG_BANK, _BREATH1_REGISTER, fade_out << 4 | fade_in)
-        self._register(_CONFIG_BANK, _BREATH2_REGISTER, 1 << 4 | pause)
-
-    def frame(self, frame=None, show=True):
-        if frame is None:
-            return self._frame
-        if not 0 <= frame <= 8:
-            raise ValueError("Frame out of range")
-        self._frame = frame
-        if show:
-            self._register(_CONFIG_BANK, _FRAME_REGISTER, frame);
-
-    def audio_sync(self, value=None):
-        return self._register(_CONFIG_BANK, _AUDIOSYNC_REGISTER, value)
-
-    def audio_play(self, sample_rate, audio_gain=0,
-                   agc_enable=False, agc_fast=False):
-        if sample_rate == 0:
-            self._mode(_PICTURE_MODE)
-            return
-        sample_rate //= 46
-        if not 1 <= sample_rate <= 256:
-            raise ValueError("Sample rate out of range")
-        self._register(_CONFIG_BANK, _ADC_REGISTER, sample_rate % 256)
-        audio_gain //= 3
-        if not 0 <= audio_gain <= 7:
-            raise ValueError("Audio gain out of range")
-        self._register(_CONFIG_BANK, _GAIN_REGISTER,
-                       bool(agc_enable) << 3 | bool(agc_fast) << 4 | audio_gain)
-        self._mode(_AUDIOPLAY_MODE)
 
     def blink(self, rate=None):
         if rate is None:
